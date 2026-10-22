@@ -4,11 +4,10 @@ import * as models from '../models/index'
 
 export function demoVulnerable () {
   return (req: Request, res: Response, next: NextFunction) => {
-    const expression = String(req.query.expression ?? '')
-    const result = eval(expression)
-    models.sequelize.query(`SELECT * FROM Products WHERE name = '${expression}'`)
+    const name = String(req.query.name ?? '')
+    models.sequelize.query('SELECT * FROM Products WHERE name = ?', { replacements: [name] })
       .then(([products]: any) => {
-        res.json({ result, products })
+        res.json({ products })
       })
       .catch(next)
   }
