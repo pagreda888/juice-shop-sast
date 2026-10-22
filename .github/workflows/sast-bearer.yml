@@ -1,0 +1,70 @@
+# Nombre del workflow que se mostrará en la pestaña Actions
+name: SAST with Bearer CLI
+# Eventos que disparan la ejecución del workflow
+on:
+  # Se ejecuta en cada push a la rama principal
+  push:
+    # Limita el push a la rama main
+    branches: [main]
+  # Se ejecuta al abrir o actualizar un Pull Request
+  pull_request:
+    # Limita el Pull Request hacia la rama main
+    branches: [main]
+  # Permite ejecutar el workflow manualmente desde la pestaña Actions
+  workflow_dispatch:
+# Permisos mínimos que necesita el token del workflow
+permissions:
+  # Permiso de solo lectura para descargar el código del repositorio
+  contents: read
+  # Permiso de escritura para publicar los resultados en Code scanning
+  security-events: write
+# Agrupa todos los pasos del análisis en un solo trabajo
+jobs:
+  # Identificador interno del trabajo
+  bearer:
+    # Máquina virtual de GitHub donde se ejecutará el análisis
+    runs-on: ubuntu-latest
+    # Lista ordenada de pasos del trabajo
+    steps:
+      # Paso 1: descarga el código del repositorio en la máquina virtual
+      - name: Checkout repository
+        # Acción oficial que clona el repositorio en el runner
+        uses: actions/checkout@v7
+      # Paso 2: instala el binario de Bearer CLI
+      - name: Install Bearer CLI
+        # Bloque de comandos de shell para la instalación
+        run: |
+          cd "$RUNNER_TEMP"  # Usa una carpeta temporal para no ensuciar el repositorio
+          curl -sfL https://raw.githubusercontent.com/Bearer/bearer/main/contrib/install.sh | sh  # Descarga y ejecuta el instalador oficial
+          sudo mv ./bin/bearer /usr/local/bin/  # Mueve el binario a una ruta incluida en el PATH
+          bearer version  # Verifica que la instalación fue correcta
+      # Paso 3: ejecuta el análisis y genera el reporte SARIF
+      - name: Run Bearer scan (SARIF)
+        # Analiza todo el repositorio y sale con código 0 para no cortar el pipeline
+        run: bearer scan . --format sarif --output bearer-results.sarif --exit-code 0
+      # Paso 4: ejecuta el análisis y genera el reporte HTML
+      - name: Run Bearer scan (HTML)
+        # Genera un reporte legible para guardarlo como artefacto
+        run: bearer scan . --format html --output bearer-report.html --exit-code 0
+      # Paso 5: publica el SARIF en Security > Code scanning
+      - name: Upload SARIF to code scanning
+        # Se ejecuta aunque el escaneo haya encontrado vulnerabilidades
+        if: always()
+        # Acción oficial de GitHub para subir archivos SARIF
+        uses: github/codeql-action/upload-sarif@v4
+        # Parámetros de la acción de carga
+        with:
+          # Ruta del archivo SARIF generado por Bearer
+          sarif_file: bearer-results.sarif
+      # Paso 6: guarda el reporte HTML como artefacto descargable
+      - name: Upload HTML report
+        # Se ejecuta aunque el escaneo haya encontrado vulnerabilidades
+        if: always()
+        # Acción oficial de GitHub para publicar artefactos
+        uses: actions/upload-artifact@v7
+        # Parámetros de la acción de artefactos
+        with:
+          # Nombre con el que aparecerá el artefacto en la ejecución
+          name: bearer-html-report
+          # Archivo que el docente podrá descargar desde Actions
+          path: bearer-report.html
